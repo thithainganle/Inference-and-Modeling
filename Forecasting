@@ -1,0 +1,70 @@
+###FORECASTING
+Code: Variability across one pollster
+# select all national polls by one pollster
+one_pollster <- polls_us_election_2016 %>%
+  filter(pollster == "Ipsos" & state == "U.S.") %>%
+  mutate(spread = rawpoll_clinton/100 - rawpoll_trump/100)
+
+# the observed standard error is higher than theory predicts
+se <- one_pollster %>%
+  summarize(empirical = sd(spread),
+            theoretical = 2*sqrt(mean(spread)*(1-mean(spread))/min(samplesize)))
+se
+
+# the distribution of the data is not normal
+one_pollster %>% ggplot(aes(spread)) +
+  geom_histogram(binwidth = 0.01, color = "black")
+Code: Trend across time for several pollsters
+polls_us_election_2016 %>%
+  filter(state == "U.S." & enddate >= "2016-07-01") %>%
+  group_by(pollster) %>%
+  filter(n() >= 10) %>%
+  ungroup() %>%
+  mutate(spread = rawpoll_clinton/100 - rawpoll_trump/100) %>%
+  ggplot(aes(enddate, spread)) +
+  geom_smooth(method = "loess", span = 0.1) +
+  geom_point(aes(color = pollster), show.legend = FALSE, alpha = 0.6)
+
+### Plotting raw percentages across time
+polls_us_election_2016 %>%
+  filter(state == "U.S." & enddate >= "2016-07-01") %>%
+  select(enddate, pollster, rawpoll_clinton, rawpoll_trump) %>%
+  rename(Clinton = rawpoll_clinton, Trump = rawpoll_trump) %>%
+  gather(candidate, percentage, -enddate, -pollster) %>%
+  mutate(candidate = factor(candidate, levels = c("Trump", "Clinton"))) %>%
+  group_by(pollster) %>%
+  filter(n() >= 10) %>%
+  ungroup() %>%
+  ggplot(aes(enddate, percentage, color = candidate)) +
+  geom_point(show.legend = FALSE, alpha = 0.4) +
+  geom_smooth(method = "loess", span = 0.15) +
+  scale_y_continuous(limits = c(30, 50))
+
+# Create an object called `cis` that has the columns indicated in the instructions
+cis <- polls %>% mutate(X_hat = (spread +1)/2,se = 2*sqrt(X_hat*(1-X_hat)/samplesize), lower = spread - qnorm(.975)*se, upper = spread+ qnorm(.975)*se) %>% select(state, startdate, enddate, pollster, grade, spread, lower, upper)
+
+# Add the actual results to the `cis` data set
+add <- results_us_election_2016 %>% mutate(actual_spread = clinton/100 - trump/100) %>% select(state, actual_spread)
+ci_data <- cis %>% mutate(state = as.character(state)) %>% left_join(add, by = "state")
+head(ci_data)
+# Create an object called `p_hits` that summarizes the proportion of confidence intervals that contain the actual value. Print this object to the console.
+p_hits <- ci_data %>% mutate(hit = ifelse(actual_spread >= lower & actual_spread <= upper, TRUE, FALSE)) %>% summarize(mean(hit))
+p_hits
+
+# Create an object called `p_hits` that summarizes the proportion of hits for each pollster that has at least 5 polls.
+p_hits <- ci_data %>% mutate(hit = ifelse(actual_spread >= lower &actual_spread <= upper, TRUE, FALSE)) %>% group_by(pollster) %>% filter(n() >= 5) %>% summarize(proportion_hits = mean(hit), n = n(), grade = grade[1]) %>% arrange(desc(proportion_hits))
+
+# Make a barplot of the proportion of hits for each state
+p_hits %>% ggplot(aes(state, proportion_hits)) + geom_bar(stat = "identity") + coord_flip()
+
+# Create an object called `errors` that calculates the difference between the predicted and actual spread and indicates if the correct winner was predicted
+errors <- cis %>% mutate(error = spread - actual_spread, hit = sign(spread) == sign(actual_spread))
+tail(errors)
+
+
+# Create a boxplot showing the errors by state for polls with grades B+ or higher
+errors %>% filter( grade %in% c("A+","A","A-","B+") | is.na(grade)) %>% mutate(state= reorder(state,error)) %>% ggplot(aes(state,error)) + geom_boxplot() + geom_point()
+
+# Create a boxplot showing the errors by state for states with at least 5 polls with grades B+ or higher
+errors %>% filter(grade %in% c("A+","A","A-","B+") | is.na(grade)) %>% group_by(state) %>% filter(n() >= 5) %>% ungroup() %>% mutate(state = reorder(state, error)) %>% ggplot(aes(state, error)) + geom_boxplot() + geom_point()
+
