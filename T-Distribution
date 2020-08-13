@@ -1,0 +1,97 @@
+####T-DISTRIBUTION
+Code: Calculating 95% confidence intervals with the t-distribution
+z <- qt(0.975, nrow(one_poll_per_pollster) - 1)
+one_poll_per_pollster %>%
+  summarize(avg = mean(spread), moe = z*sd(spread)/sqrt(length(spread))) %>%
+  mutate(start = avg - moe, end = avg + moe)
+
+# quantile from t-distribution versus normal distribution
+qt(0.975, 14)    # 14 = nrow(one_poll_per_pollster) - 1
+qnorm(0.975)
+
+# Calculate the probability of seeing t-distributed random variables being more than 2 in absolute value when 'df = 3'.
+1 - pt(2,3) + pt(-2,3)
+
+
+#####
+# Generate a vector 'df' that contains a sequence of numbers from 3 to 50
+df <- seq(3,50)
+
+# Make a function called 'pt_func' that calculates the probability that a value is more than |2| for any degrees of freedom 
+pt_func <- function(df) {
+  1- pt(2,df) + pt(-2,df)
+}
+
+# Generate a vector 'probs' that uses the `pt_func` function to calculate the probabilities
+probs <- pt_func(df)
+
+# Plot 'df' on the x-axis and 'probs' on the y-axis
+plot(df,probs)
+
+
+###
+# Load the neccessary libraries and data
+library(dslabs)
+library(dplyr)
+data(heights)
+
+# Use the sample code to generate 'x', a vector of male heights
+x <- heights %>% filter(sex == "Male") %>%
+  .$height
+
+# Create variables for the mean height 'mu', the sample size 'N', and the number of times the simulation should run 'B'
+mu <- mean(x)
+N <- 15
+B <- 10000
+
+# Use the `set.seed` function to make sure your answer matches the expected result after random sampling
+set.seed(1)
+
+# Generate a logical vector 'res' that contains the results of the simulations
+res <- replicate(B, {
+  X <- sample(x,N, replace =TRUE)
+  interval <- mean(X) + c(-1,1)*qnorm(.975)*sd(X)/sqrt(N)
+  between(mu, interval[1], interval[2])
+})
+
+### Research funding rates example
+# load and inspect research funding rates object
+library(tidyverse)
+library(dslabs)
+data(research_funding_rates)
+research_funding_rates
+
+# compute totals that were successful or not successful
+totals <- research_funding_rates %>%
+  select(-discipline) %>%
+  summarize_all(funs(sum)) %>%
+  summarize(yes_men = awards_men,
+            no_men = applications_men - awards_men,
+            yes_women = awards_women,
+            no_women = applications_women - awards_women)
+
+# compare percentage of men/women with awards
+totals %>% summarize(percent_men = yes_men/(yes_men + no_men),
+                     percent_women = yes_women/(yes_women + no_women))
+Code: Two-by-two table and p-value for the Lady Tasting Tea problem
+tab <- matrix(c(3,1,1,3), 2, 2)
+rownames(tab) <- c("Poured Before", "Poured After")
+colnames(tab) <- c("Guessed Before", "Guessed After")
+tab
+
+# The 'errors' data have already been loaded. Examine them using the `head` function.
+head(errors)
+
+# Generate an object called 'totals' that contains the numbers of good and bad predictions for polls rated A- and C-
+totals <- errors%>% filter(grade %in% c("A-","C-")) %>% group_by(grade,hit) %>% summarize(num = n()) %>% spread(grade, num)
+head(totals)
+
+
+# Print the proportion of hits for grade A- polls to the console
+totals[[2,3]]/sum(totals[[3]])
+
+# Print the proportion of hits for grade C- polls to the console
+totals[[2,2]]/sum(totals[[2]])
+# p-value calculation with Fisher's Exact Test
+fisher.test(tab, alternative = "greater")
+
