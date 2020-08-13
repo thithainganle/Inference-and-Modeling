@@ -1,0 +1,202 @@
+##POSTERIOR DISTRIBUTION
+# The results` object has already been loaded. Examine the values stored: `avg` and `se` of the spread
+results
+
+# Define `mu` and `tau`
+mu <- 0
+tau <- 0.01
+
+# Define a variable called `sigma` that contains the standard error in the object `results`
+sigma <- results$se
+sigma
+# Define a variable called `Y` that contains the average in the object `results`
+Y <- results$avg
+
+# Define a variable `B` using `sigma` and `tau`. Print this value to the console.
+B <- sigma^2/(sigma^2+tau^2)
+
+# Calculate the expected value of the posterior distribution
+B*mu + (1-B)*Y
+
+# Compute the standard error of the posterior distribution. Print this value to the console.
+sqrt(1/(1/sigma^2+1/tau^2))
+
+# Construct the 95% credible interval. Save the lower and then the upper confidence interval to a variable called `ci`.
+ci <- c(E - qnorm(.975)*se , E + qnorm(.975)*se)
+
+# Using the `pnorm` function, calculate the probability that the actual spread was less than 0 (in Trump's favor). Print this value to the console.
+pnorm(0, exp_value, se)
+
+# Define a variable `taus` as different values of tau
+taus <- seq(0.005, 0.05, len = 100)
+
+# Create a function called `p_calc` that generates `B` and calculates the probability of the spread being less than 0
+
+p_calc <- function(tau) {
+  B <- sigma^2/(sigma^2+taus^2)
+  E <- B*mu + (1-B)*Y
+  se <- sqrt(1/(1/sigma^2+1/taus^2))
+  pnorm(0, E, se)
+}
+
+
+
+# Create a vector called `ps` by applying the function `p_calc` across values in `taus`
+ps <- p_calc(taus)
+ps
+# Plot `taus` on the x-axis and `ps` on the y-axis
+plot(taus,ps)
+
+
+polls <- polls_us_election_2016 %>%
+  filter(state == "U.S." & enddate >= "2016-10-31" &
+           (grade %in% c("A+", "A", "A-", "B+") | is.na(grade))) %>%
+  mutate(spread = rawpoll_clinton/100 - rawpoll_trump/100)
+
+
+one_poll_per_pollster <- polls %>% group_by(pollster) %>%
+  filter(enddate == max(enddate)) %>%
+  ungroup()
+head(one_poll_per_pollster)
+
+results <- one_poll_per_pollster %>%
+  summarize(avg = mean(spread), se = sd(spread)/sqrt(length(spread))) %>%
+  mutate(start = avg - 1.96*se, end = avg + 1.96*se)
+head(results)
+
+### Computing the posterior mean, standard error, credible interval and probability
+Note that to compute an exact 95% credible interval, we would use qnorm(.975) instead of 1.96.
+
+mu <- 0
+tau <- 0.035
+sigma <- results$se
+Y <- results$avg
+B <- sigma^2 / (sigma^2 + tau^2)
+posterior_mean <- B*mu + (1-B)*Y
+posterior_se <- sqrt(1 / (1/sigma^2 + 1/tau^2))
+
+posterior_mean
+posterior_se
+
+# 95% credible interval
+posterior_mean + c(-1.96, 1.96)*posterior_se
+
+# probability of d > 0
+1 - pnorm(0, posterior_mean, posterior_se)
+
+
+##########GENERAL BIAS VARIABILITY
+Code: Simulated data with Xj=d+??j
+J <- 6
+N <- 2000
+d <- .021
+p <- (d+1)/2
+X <- d + rnorm(J, 0, 2*sqrt(p*(1-p)/N))
+X
+### Simulated data with Xi,j=d+??i,j
+I <- 5
+J <- 6
+N <- 2000
+d <- .021
+p <- (d+1)/2
+X <- sapply(1:I, function(i){
+  d + rnorm(J, 0, 2*sqrt(p*(1-p)/N))
+})
+X
+
+### Simulated data with Xi,j=d+hi+??i,j
+I <- 5
+J <- 6
+N <- 2000
+d <- .021
+p <- (d+1)/2
+h <- rnorm(I, 0, 0.025)    # assume standard error of pollster-to-pollster variability is 0.025
+X <- sapply(1:I, function(i){
+  d + rnorm(J, 0, 2*sqrt(p*(1-p)/N))
+})
+
+### Calculating probability of d>0 with general bias
+##Note that sigma now includes an estimate of the variability due to general bias ??b=.025.
+
+mu <- 0
+tau <- 0.035
+sigma <- sqrt(results$se^2 + .025^2)
+Y <- results$avg
+B <- sigma^2 / (sigma^2 + tau^2)
+
+posterior_mean <- B*mu + (1-B)*Y
+posterior_se <- sqrt(1 / (1/sigma^2 + 1/tau^2))
+
+1 - pnorm(0, posterior_mean, posterior_se)
+
+results_us_election_2016 %>% arrange(desc(electoral_votes)) %>% top_n(5, electoral_votes)
+### Computing the average and standard deviation for each state
+results <- polls_us_election_2016 %>%
+  filter(state != "U.S." &
+           !grepl("CD", "state") &
+           enddate >= "2016-10-31" &
+           (grade %in% c("A+", "A", "A-", "B+") | is.na(grade))) %>%
+  mutate(spread = rawpoll_clinton/100 - rawpoll_trump/100) %>%
+  group_by(state) %>%
+  summarize(avg = mean(spread), sd = sd(spread), n = n()) %>%
+  mutate(state = as.character(state))
+
+# 10 closest races = battleground states
+results %>% arrange(abs(avg))
+
+# joining electoral college votes and results
+results <- left_join(results, results_us_election_2016, by="state")
+
+### states with no polls: note Rhode Island and District of Columbia = Democrat
+results_us_election_2016 %>% filter(!state %in% results$state)
+
+# assigns sd to states with just one poll as median of other sd values
+results <- results %>%
+  mutate(sd = ifelse(is.na(sd), median(results$sd, na.rm = TRUE), sd))
+
+# Calculating the posterior mean and posterior standard error
+Note there is a small error in the video code: B should be defined as sigma^2/(sigma^2 + tau^2).
+
+mu <- 0
+tau <- 0.02
+results %>% mutate(sigma = sd/sqrt(n),
+                   B = sigma^2/ (sigma^2 + tau^2),
+                   posterior_mean = B*mu + (1-B)*avg,
+                   posterior_se = sqrt( 1 / (1/sigma^2 + 1/tau^2))) %>%
+  arrange(abs(posterior_mean))
+
+### Monte Carlo simulation of Election Night results (no general bias)
+mu <- 0
+tau <- 0.02
+clinton_EV <- replicate(1000, {
+  results %>% mutate(sigma = sd/sqrt(n),
+                     B = sigma^2/ (sigma^2 + tau^2),
+                     posterior_mean = B*mu + (1-B)*avg,
+                     posterior_se = sqrt( 1 / (1/sigma^2 + 1/tau^2)),
+                     simulated_result = rnorm(length(posterior_mean), posterior_mean, posterior_se),
+                     clinton = ifelse(simulated_result > 0, electoral_votes, 0)) %>%    # award votes if Clinton wins state
+    summarize(clinton = sum(clinton)) %>%    # total votes for Clinton
+    .$clinton + 7    # 7 votes for Rhode Island and DC
+})
+mean(clinton_EV > 269)    # over 269 votes wins election
+
+# histogram of outcomes
+data.frame(clintonEV) %>%
+  ggplot(aes(clintonEV)) +
+  geom_histogram(binwidth = 1) +
+  geom_vline(xintercept = 269)
+Code: Monte Carlo simulation including general bias
+mu <- 0
+tau <- 0.02
+bias_sd <- 0.03
+clinton_EV_2 <- replicate(1000, {
+  results %>% mutate(sigma = sqrt(sd^2/(n) + bias_sd^2),    # added bias_sd term
+                     B = sigma^2/ (sigma^2 + tau^2),
+                     posterior_mean = B*mu + (1-B)*avg,
+                     posterior_se = sqrt( 1 / (1/sigma^2 + 1/tau^2)),
+                     simulated_result = rnorm(length(posterior_mean), posterior_mean, posterior_se),
+                     clinton = ifelse(simulated_result > 0, electoral_votes, 0)) %>%    # award votes if Clinton wins state
+    summarize(clinton = sum(clinton)) %>%    # total votes for Clinton
+    .$clinton + 7    # 7 votes for Rhode Island and DC
+})
+mean(clinton_EV_2 > 269)    # over 269 votes wins election
